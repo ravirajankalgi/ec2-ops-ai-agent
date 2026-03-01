@@ -62,5 +62,6 @@ User → Amazon Bedrock Agent
 - Separate EC2 and ASG action groups cleanly
 - Improve error classification and remediation hints
 - Add architecture diagram
+- UI or chatbot frontend
 ---
 
