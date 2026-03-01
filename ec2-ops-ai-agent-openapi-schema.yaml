@@ -1,0 +1,412 @@
+openapi: 3.0.1
+info:
+  title: EC2 + ASG Operations API
+  version: 1.3.1
+  description: 'Action group API for EC2 console-style operations (instances, AMI,
+    EBS, snapshots, security groups, key pairs, EIP, ENI, placement groups, launch
+    templates, ALB, CloudWatch alarms, basic VPC helpers, and SSM run-command) (EC2
+    operations only; ASG path removed to match this Lambda). Includes debug actions
+    (whoami/get_region) so the agent can confirm account + region used.
+
+    '
+paths:
+  /ec2:
+    post:
+      operationId: ec2Operation
+      summary: Perform EC2 and related operations
+      description: 'Single endpoint that routes operations based on the "action" field.
+        Only parameters listed in this schema are accepted (additionalProperties=false).
+
+        '
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                action:
+                  type: string
+                  description: Operation to perform
+                  enum:
+                  - whoami
+                  - get_region
+                  - tag_resources
+                  - describe_instances
+                  - create_instance
+                  - run_instances
+                  - start_instance
+                  - stop_instance
+                  - terminate_instance
+                  - set_termination_protection
+                  - create_ami
+                  - deregister_ami
+                  - create_snapshot
+                  - delete_snapshot
+                  - copy_snapshot
+                  - create_volume
+                  - attach_volume
+                  - detach_volume
+                  - delete_volume
+                  - create_security_group
+                  - add_sg_rule
+                  - remove_sg_rule
+                  - create_key_pair
+                  - import_key_pair
+                  - delete_key_pair
+                  - allocate_eip
+                  - associate_eip
+                  - disassociate_eip
+                  - release_eip
+                  - create_eni
+                  - attach_eni
+                  - detach_eni
+                  - delete_eni
+                  - create_placement_group
+                  - delete_placement_group
+                  - create_launch_template
+                  - delete_launch_template
+                  - create_load_balancer
+                  - delete_load_balancer
+                  - register_targets
+                  - deregister_targets
+                  - delete_listener
+                  - delete_target_group
+                  - create_alarm
+                  - delete_alarm
+                  - create_vpc_basic
+                  - create_nat_gateway
+                  - ssm_send_command
+                region:
+                  type: string
+                  description: Optional region override (e.g., us-east-1). If omitted,
+                    backend uses AWS_REGION.
+                resources:
+                  type: string
+                  description: Comma-separated resource IDs for tag_resources (e.g.,
+                    "i-123,vol-456")
+                tags:
+                  description: 'Tags to apply. Accepts: - object map ({"Name":"demo","Env":"uat"})
+                    - array of {Key,Value} - string "Name=demo,Env=uat"
+
+                    '
+                  oneOf:
+                  - type: object
+                    additionalProperties:
+                      type: string
+                  - type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        Key:
+                          type: string
+                        Value:
+                          type: string
+                      required:
+                      - Key
+                      - Value
+                  - type: string
+                instance_id:
+                  type: string
+                  description: Instance ID (i-xxxx). Required for start/stop/terminate/create_ami/etc
+                    where applicable.
+                enabled:
+                  type: boolean
+                  description: Used by set_termination_protection (true enables protection).
+                  default: true
+                name:
+                  type: string
+                  description: Optional Name tag value for create_instance.
+                ami_id:
+                  type: string
+                  description: Optional AMI override (ami-xxxx). If omitted, backend
+                    resolves via SSM.
+                instance_type:
+                  type: string
+                  description: Instance type for create_instance/create_launch_template.
+                  enum:
+                  - t3.micro
+                  - t3.small
+                  - t3.medium
+                  default: t3.micro
+                use_default_network:
+                  type: boolean
+                  description: If true and subnet/vpc not provided, backend uses Default
+                    VPC + subnets.
+                  default: true
+                vpc_id:
+                  type: string
+                  description: VPC ID (vpc-xxxx). Optional if using default network.
+                subnet_id:
+                  type: string
+                  description: Subnet ID (subnet-xxxx). Optional if using default
+                    network.
+                subnets:
+                  type: string
+                  description: Comma-separated subnet IDs (subnet-a,subnet-b). Used
+                    by ALB or other multi-subnet ops.
+                security_group_ids:
+                  type: string
+                  description: Comma-separated SG IDs (sg-a,sg-b). Optional; backend
+                    may create one if missing.
+                ami_name:
+                  type: string
+                  description: Name for AMI (create_ami). If omitted, backend generates
+                    a name.
+                no_reboot:
+                  type: boolean
+                  description: If true, do not reboot the instance while creating
+                    AMI.
+                  default: true
+                image_id:
+                  type: string
+                  description: AMI ID (ami-xxxx). Used for deregister_ami.
+                volume_id:
+                  type: string
+                  description: Volume ID (vol-xxxx). Required for create_snapshot.
+                snapshot_id:
+                  type: string
+                  description: Snapshot ID (snap-xxxx). Required for delete_snapshot.
+                description:
+                  type: string
+                  description: Free-text description (snapshots, copies, etc.).
+                source_region:
+                  type: string
+                  description: Source region for copy_snapshot. Default is current
+                    region.
+                source_snapshot_id:
+                  type: string
+                  description: Source snapshot ID (snap-xxxx) for copy_snapshot.
+                encrypted:
+                  type: boolean
+                  description: Encrypt snapshot copy / volume creation (if supported
+                    by action).
+                  default: false
+                kms_key_id:
+                  type: string
+                  description: KMS key id/arn for encryption (optional).
+                size_gb:
+                  type: integer
+                  minimum: 1
+                  description: EBS size in GB (create_volume).
+                volume_type:
+                  type: string
+                  description: EBS type (create_volume).
+                  default: gp3
+                device:
+                  type: string
+                  description: Device name for attach_volume (e.g., /dev/sdf).
+                  default: /dev/sdf
+                force:
+                  type: boolean
+                  description: Force detach ENI/volume (detach_* actions).
+                  default: false
+                sg_name:
+                  type: string
+                  description: Security group name for create_security_group.
+                open_http:
+                  type: boolean
+                  description: If true, adds inbound 80/tcp 0.0.0.0/0 during create_security_group.
+                  default: false
+                open_ssh:
+                  type: boolean
+                  description: If true, adds inbound 22/tcp 0.0.0.0/0 during create_security_group.
+                  default: false
+                security_group_id:
+                  type: string
+                  description: SG ID (sg-xxxx). Used by add_sg_rule/remove_sg_rule.
+                direction:
+                  type: string
+                  description: Rule direction for add_sg_rule/remove_sg_rule.
+                  enum:
+                  - ingress
+                  - egress
+                  default: ingress
+                protocol:
+                  type: string
+                  description: Rule protocol (tcp/udp/icmp/-1) or ALB protocol (HTTP/HTTPS).
+                from_port:
+                  type: integer
+                  description: SG rule from port (tcp/udp).
+                to_port:
+                  type: integer
+                  description: SG rule to port (tcp/udp).
+                cidr_ipv4:
+                  type: string
+                  description: IPv4 CIDR for SG rule (e.g., 0.0.0.0/0).
+                cidr_ipv6:
+                  type: string
+                  description: IPv6 CIDR for SG rule (e.g., ::/0).
+                source_sg_id:
+                  type: string
+                  description: Source SG ID for SG rule (sg-xxxx).
+                rules:
+                  type: array
+                  description: Optional advanced multi-rule list; each item supports
+                    protocol/from_port/to_port/cidr/source_sg_id.
+                  items:
+                    type: object
+                    additionalProperties: false
+                    properties:
+                      protocol:
+                        type: string
+                      from_port:
+                        type: integer
+                      to_port:
+                        type: integer
+                      cidr_ipv4:
+                        type: string
+                      cidr_ipv6:
+                        type: string
+                      source_sg_id:
+                        type: string
+                key_name:
+                  type: string
+                  description: Key pair name. Used by create_key_pair/import_key_pair/delete_key_pair
+                    and optionally create_instance.
+                public_key_material:
+                  type: string
+                  description: 'SSH public key material for import_key_pair. Accepts
+                    raw OpenSSH public key text (e.g., "ssh-ed25519 AAAA...") OR a
+                    base64-encoded string of that text.
+
+                    '
+                allocation_id:
+                  type: string
+                  description: Elastic IP AllocationId (eipalloc-xxxx). Used for associate_eip/release_eip.
+                public_ip:
+                  type: string
+                  description: Elastic IP address (x.x.x.x). Alternative to allocation_id
+                    for associate_eip.
+                association_id:
+                  type: string
+                  description: Elastic IP AssociationId (eipassoc-xxxx). Used for
+                    disassociate_eip.
+                private_ip_address:
+                  type: string
+                  description: Optional private IP for associate_eip on a specific
+                    ENI private address or create_eni.
+                network_interface_id:
+                  type: string
+                  description: ENI id (eni-xxxx). Used for create/delete/attach and
+                    associate_eip to ENI.
+                attachment_id:
+                  type: string
+                  description: ENI attachment id (eni-attach-xxxx). Used for detach_eni.
+                device_index:
+                  type: integer
+                  minimum: 0
+                  description: Device index for attach_eni (0 primary, 1+ secondary).
+                  default: 1
+                delete_on_termination:
+                  type: boolean
+                  description: If true, ENI is deleted when instance terminates (applied
+                    after attach_eni if backend supports).
+                  default: false
+                placement_group_name:
+                  type: string
+                  description: Placement group name.
+                strategy:
+                  type: string
+                  description: Placement strategy (cluster/spread/partition). Backend
+                    may default to spread.
+                  default: spread
+                launch_template_id:
+                  type: string
+                  description: Launch template ID (lt-xxxx).
+                launch_template_name:
+                  type: string
+                  description: Launch template name.
+                iam_instance_profile_name:
+                  type: string
+                  description: IAM instance profile name (optional for LT/instance).
+                load_balancer_arn:
+                  type: string
+                  description: ALB ARN. Used for delete_load_balancer.
+                listener_arn:
+                  type: string
+                  description: Listener ARN. Used for delete_listener.
+                target_group_arn:
+                  type: string
+                  description: Target group ARN. Used for register/deregister/delete_target_group.
+                target_group_name:
+                  type: string
+                  description: Target group name (create_load_balancer).
+                port:
+                  type: integer
+                  minimum: 1
+                  maximum: 65535
+                  description: Port for ALB listener/target group or register_targets
+                    (default 80).
+                  default: 80
+                targets:
+                  type: string
+                  description: Comma-separated instance IDs to register/deregister
+                    as targets (i-aaa,i-bbb).
+                alarm_name:
+                  type: string
+                  description: Alarm name.
+                auto_recover:
+                  type: boolean
+                  description: If true, configures EC2 auto-recovery action (uses
+                    StatusCheckFailed_System).
+                  default: false
+                metric_name:
+                  type: string
+                  description: CloudWatch metric name (e.g., CPUUtilization).
+                namespace:
+                  type: string
+                  description: Metric namespace (default AWS/EC2).
+                  default: AWS/EC2
+                threshold:
+                  type: number
+                  description: Alarm threshold value.
+                comparison_operator:
+                  type: string
+                  description: CloudWatch comparison operator.
+                  default: GreaterThanThreshold
+                period:
+                  type: integer
+                  description: Metric period (seconds).
+                  default: 300
+                evaluation_periods:
+                  type: integer
+                  description: Number of periods to evaluate.
+                  default: 1
+                vpc_cidr:
+                  type: string
+                  description: CIDR for create_vpc_basic.
+                  default: 10.0.0.0/16
+                instance_ids:
+                  type: string
+                  description: Comma-separated instance IDs for ssm_send_command (i-aaa,i-bbb).
+                    Alternative to instance_id.
+                document_name:
+                  type: string
+                  description: SSM document name (default AWS-RunShellScript).
+                  default: AWS-RunShellScript
+                commands:
+                  description: Command(s) to run via SSM.
+                  oneOf:
+                  - type: string
+                  - type: array
+                    items:
+                      type: string
+                timeout_seconds:
+                  type: integer
+                  description: SSM command timeout in seconds.
+                  default: 600
+                comment:
+                  type: string
+                  description: Optional comment for SSM command.
+              required:
+              - action
+      responses:
+        '200':
+          description: Successful response
+        '400':
+          description: Bad request
+        '500':
+          description: Internal error
